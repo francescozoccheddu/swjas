@@ -103,6 +103,7 @@ class Point:
 
 
 ## Clean
+Validate and clean the request body.
 
 ### Usage
 Decorate your handlers with the `clean.clean` decorator.
@@ -202,9 +203,9 @@ Any `exception.PrintableException` cause set with the `raise ... from` syntax wi
 ### Examples
 Raise an `HttpException`
 ```python
-from swjas.exceptions import AuthenticationException, NotFoundException
+from swjas.exceptions import AuthorizationException, NotFoundException
 if not authenticated:
-    raise AuthenticationException("Requested object requires authentication")
+    raise AuthorizationException("Requested object requires authentication")
 elif not exists:
     raise NotFoundException("Requested object does not exist")
 ```
@@ -231,6 +232,7 @@ class GoneException(HttpException):
 
 
 ## Client
+Send requests.
 
 ### Usage
 Run `python -m swjas.client -h` from command line or call `client.request` or `client.service` functions.
@@ -240,7 +242,7 @@ Send a request providing JSON body via command line
 ```
 >>> python -m swjas.client localhost:8080/signup --outputstatus --indent 4 > response.json
 {
-    "username": "Francesco,
+    "username": "Francesco",
     "password": 12345  
 }
 ^Z
