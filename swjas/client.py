@@ -28,6 +28,8 @@ class _RequestErrorException(Exception):
 
 
 def service(service, host, data=None, timeout=15):
+    # TODO Add docs
+
     if not isinstance(service, str):
         raise TypeError("Service must be string")
     if not isinstance(host, str):
@@ -56,6 +58,8 @@ def service(service, host, data=None, timeout=15):
 
 
 def request(url, data=None, timeout=15):
+    # TODO Add docs
+
     if not isinstance(url, str):
         raise TypeError("Url must be string")
     if not isinstance(timeout, (int, float)):
@@ -63,10 +67,24 @@ def request(url, data=None, timeout=15):
     if timeout <= 0:
         raise ValueError("Timeout must be positive")
 
-    import requests
-    res = requests.post(url, json=data, timeout=timeout)
+    from urllib import parse
+    url = parse.urlparse(url)
 
-    if not res.status_code.ok:
+    if (not all([url.netloc, url.path])) or any([url.query, url.params, url.fragment]):
+        raise ValueError("Invalid url")
+    if url.scheme:
+        if url.scheme != "http":
+            raise ValueError("Expected http scheme")
+    else:
+        url = url._replace(scheme="http")
+
+    import requests
+
+    # TODO Compress
+
+    res = requests.post(url.geturl(), json=data, timeout=timeout)
+
+    if not res.ok:
         raise _RequestErrorException(res.json(), res.status_code)
 
     return res.json()
@@ -140,7 +158,7 @@ def _main():
                 }
             else:
                 out = data
-                if exceptions.isOKStatus(statusCode):
+                if not exceptions.isOKStatus(statusCode):
                     logger.error("Bad HTTP response (%s %s)", statusCode, exceptions.getStatusMessage(statusCode))
             indent = args.indent if args.indent > 0 else None
             print(json.dumps(out, indent=indent, cls=JSONEncoder))
