@@ -27,7 +27,7 @@ class JSONEncoder(json.JSONEncoder):
 
     def default(self, obj):
         if isinstance(obj, datetime):
-            return datetime.isoformat()
+            return obj.isoformat()
         if hasattr(obj, "_json"):
             return obj._json
         return json.JSONEncoder.default(self, obj)
