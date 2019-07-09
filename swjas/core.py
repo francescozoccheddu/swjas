@@ -34,6 +34,7 @@ class JSONEncoder(json.JSONEncoder):
 
 
 def makeApplication(routes):
+    # TODO Add docs
     # Prepare route dict
     routeDict = {}
     for path, handler in routes:
@@ -44,6 +45,10 @@ def makeApplication(routes):
         # Catch HTTP exceptions
         try:
             path = environ.get("PATH_INFO", "").strip("/")
+            # Ensure JSON accepted
+            # TODO Check 'Accept' header
+            # Collect accepted charsets
+            # TODO Check 'Accept-Charset' header
             # Collect accepted encoding types
             acceptedEncoding = []
             acceptEncodingHeader = environ.get("HTTP_ACCEPT_ENCODING")
@@ -70,6 +75,9 @@ def makeApplication(routes):
                     requestBody = environ['wsgi.input'].read(requestBodyLength)
                 except:
                     requestBody = ""
+                # Decode body
+                # TODO Check 'Content-Type' header
+                # TODO Check 'Content-Encoding' header
                 if requestBody == "" or requestBody.isspace():
                     jsonRequestBody = None
                 else:
@@ -122,8 +130,10 @@ def makeApplication(routes):
 
         responseHeaders = []
         if responseBody is not None:
-            responseBody = responseBody.encode("utf-8")
-            responseHeaders += [("Content-Type", "application/json")]
+            # TODO Decide encoding
+            encoding = "utf-8"
+            responseBody = responseBody.encode(encoding)
+            responseHeaders += [("Content-Type", f"application/json; charset={encoding}")]
         responseBodyLength = len(responseBody) if responseBody is not None else 0
         responseHeaders += [("Content-Length", f"{responseBodyLength}")]
         allow = "POST" if allowPost else ""

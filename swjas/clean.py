@@ -1,5 +1,5 @@
-from enum import Enum, auto
 from . import exceptions
+from enum import Enum, auto
 
 
 class FieldException(exceptions.PrintableException):
@@ -7,7 +7,8 @@ class FieldException(exceptions.PrintableException):
 
 
 def clean(field):
-    
+    # TODO Add docs
+
     from functools import wraps
 
     if not isinstance(field, Field):
@@ -29,21 +30,34 @@ def clean(field):
     return decorator
 
 
-class Field:
+class Do(Enum):
+    # TODO Add docs
+    SKIP = auto(),
+    RAISE = auto()
 
-    class Do(Enum):
-        SKIP = auto(),
-        DEFAULT = auto(),
-        RAISE = auto()
 
-    def __init__(self, missing=Do.RAISE, error=Do.RAISE, default=None):
-        self._missing = missing
-        self._error = error
-        self._default = default
+class Default:
+    # TODO Add docs
+
+    def __init__(self, value):
+        self._value = value
 
     @property
-    def default(self):
-        return self._default
+    def value(self):
+        return self._value
+
+
+class Field:
+    # TODO Add docs
+
+    def __init__(self, missing=Do.RAISE, error=Do.RAISE):
+        # TODO Add docs
+        if not isinstance(missing, (Do, Default)):
+            raise TypeError("Expected missing action")
+        if not isinstance(error, (Do, Default)):
+            raise TypeError("Expected error action")
+        self._missing = missing
+        self._error = error
 
     @property
     def onMissing(self):
@@ -54,30 +68,34 @@ class Field:
         return self._error
 
     def clean(self, value):
+        # TODO Add docs
         raise NotImplementedError()
 
     def cleanAndAdd(self, present, value, add):
+        # TODO Add docs
         if present:
             try:
                 value = self.clean(value)
             except FieldException as e:
-                if self._error == Field.Do.RAISE:
+                if self._error == Do.RAISE:
                     raise e
-                elif self._error == Field.Do.DEFAULT:
-                    add(self._default)
+                elif isinstance(self._error, Default):
+                    add(self._error.value)
             else:
                 add(value)
         else:
-            if self._missing == Field.Do.RAISE:
+            if self._missing == Do.RAISE:
                 raise FieldException("Required but missing")
-            elif self._missing == Field.Do.DEFAULT:
-                add(self._default)
+            elif isinstance(self._missing, Default):
+                add(self._missing.value)
 
 
 class TypeField(Field):
+    # TODO Add docs
 
-    def __init__(self, type, missing=Field.Do.RAISE, error=Field.Do.RAISE, default=None):
-        super().__init__(missing=missing, error=error, default=default)
+    def __init__(self, type, missing=Do.RAISE, error=Do.RAISE):
+        # TODO Add docs
+        super().__init__(missing=missing, error=error)
         self._type = type
 
     @property
@@ -100,9 +118,11 @@ class TypeField(Field):
 
 
 class ScalarField(TypeField):
+    # TODO Add docs
 
-    def __init__(self, type, min=None, max=None, missing=Field.Do.RAISE, error=Field.Do.RAISE, default=None):
-        super().__init__(type, missing=missing, error=error, default=default)
+    def __init__(self, type, min=None, max=None, missing=Do.RAISE, error=Do.RAISE):
+        # TODO Add docs
+        super().__init__(type, missing=missing, error=error)
         self._min = min
         self._max = max
 
@@ -124,27 +144,31 @@ class ScalarField(TypeField):
 
 
 class IntField(ScalarField):
+    # TODO Add docs
 
-    def __init__(self, min=None, max=None, missing=Field.Do.RAISE, error=Field.Do.RAISE, default=None):
-        super().__init__(int, min=min, max=max, missing=missing, error=error, default=default)
+    def __init__(self, min=None, max=None, missing=Do.RAISE, error=Do.RAISE):
+        super().__init__(int, min=min, max=max, missing=missing, error=error)
 
 
 class FloatField(ScalarField):
+    # TODO Add docs
 
-    def __init__(self, min=None, max=None, missing=Field.Do.RAISE, error=Field.Do.RAISE, default=None):
-        super().__init__((int, float), min=min, max=max, missing=missing, error=error, default=default)
+    def __init__(self, min=None, max=None, missing=Do.RAISE, error=Do.RAISE):
+        super().__init__((int, float), min=min, max=max, missing=missing, error=error)
 
 
 class BoolField(TypeField):
+    # TODO Add docs
 
-    def __init__(self, missing=Field.Do.RAISE, error=Field.Do.RAISE, default=None):
-        super().__init__(bool, missing=missing, error=error, default=default)
+    def __init__(self, missing=Do.RAISE, error=Do.RAISE):
+        super().__init__(bool, missing=missing, error=error)
 
 
 class StringField(TypeField):
+    # TODO Add docs
 
-    def __init__(self, minLength=None, maxLength=None, regex=None, missing=Field.Do.RAISE, error=Field.Do.RAISE, default=None):
-        super().__init__(str, missing=missing, error=error, default=default)
+    def __init__(self, minLength=None, maxLength=None, regex=None, missing=Do.RAISE, error=Do.RAISE):
+        super().__init__(str, missing=missing, error=error)
         self._minLength = minLength
         self._maxLength = maxLength
         import re
@@ -174,9 +198,11 @@ class StringField(TypeField):
 
 
 class ListField(TypeField):
+    # TODO Add docs
 
-    def __init__(self, minLength=None, maxLength=None, fields=None, missing=Field.Do.RAISE, error=Field.Do.RAISE, default=None):
-        super().__init__(list, missing=missing, error=error, default=default)
+    def __init__(self, minLength=None, maxLength=None, fields=None, missing=Do.RAISE, error=Do.RAISE):
+        # TODO Add docs
+        super().__init__(list, missing=missing, error=error)
         self._minLength = minLength
         self._maxLength = maxLength
         self._fields = fields
@@ -219,18 +245,20 @@ class ListField(TypeField):
         return value
 
     @staticmethod
-    def byLength(length, fields=None, missing=Field.Do.RAISE, error=Field.Do.RAISE, default=None):
-        return ListField(length, length, fields, missing, error, default)
+    def byLength(length, fields=None, missing=Do.RAISE, error=Do.RAISE):
+        return ListField(length, length, fields, missing, error)
 
     @staticmethod
-    def byFields(fields=None, missing=Field.Do.RAISE, error=Field.Do.RAISE, default=None):
-        return ListField.byLength(len(fields), fields, missing, error, default)
+    def byFields(fields=None, missing=Do.RAISE, error=Do.RAISE):
+        return ListField.byLength(len(fields), fields, missing, error)
 
 
 class TimeField(TypeField):
+    # TODO Add docs
 
-    def __init__(self, min=None, max=None, tzAware=None, missing=Field.Do.RAISE, error=Field.Do.RAISE, default=None):
-        super().__init__(str, missing=missing, error=error, default=default)
+    def __init__(self, min=None, max=None, tzAware=None, missing=Do.RAISE, error=Do.RAISE):
+        # TODO Add docs
+        super().__init__(str, missing=missing, error=error)
         self._min = min
         self._max = max
         self._tzAware = tzAware
@@ -249,8 +277,8 @@ class TimeField(TypeField):
 
     def clean(self, value):
         try:
-            from . import timeutils
-            value = timeutils.parse(value)
+            from dateutil import parser
+            value = parser.parse(value)
         except ValueError as e:
             raise FieldException(f"Invalid datetime: {e}")
         except OverflowError as e:
@@ -266,9 +294,11 @@ class TimeField(TypeField):
 
 
 class DictField(TypeField):
+    # TODO Add docs
 
-    def __init__(self, fields=None, missing=Field.Do.RAISE, error=Field.Do.RAISE, default=None):
-        super().__init__(dict, missing=missing, error=error, default=default)
+    def __init__(self, fields=None, missing=Do.RAISE, error=Do.RAISE):
+        # TODO Add docs
+        super().__init__(dict, missing=missing, error=error)
         self._fields = fields
 
     @property
@@ -306,9 +336,11 @@ class DictField(TypeField):
 
 
 class OptionField(Field):
+    # TODO Add docs
 
-    def __init__(self, field, options, missing=Field.Do.RAISE, error=Field.Do.RAISE, default=None):
-        super().__init__(missing=missing, error=error, default=default)
+    def __init__(self, field, options, missing=Do.RAISE, error=Do.RAISE):
+        # TODO Add docs
+        super().__init__(missing=missing, error=error)
         if not isinstance(field, Field):
             raise TypeError("Expected Field type")
         if not isinstance(options, list):

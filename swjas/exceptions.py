@@ -1,6 +1,7 @@
 
 
 def getStatusMessage(statusCode, default="Unknown status"):
+    # TODO Add docs
     return {
         100: 'Continue',
         101: 'Switching Protocols',
@@ -67,12 +68,17 @@ def getStatusMessage(statusCode, default="Unknown status"):
         599: 'Network Connect Timeout Error'
     }.get(statusCode, default)
 
+
 def isOKStatus(statusCode):
+    # TODO Add docs
     return 200 <= statusCode < 300
 
+
 class PrintableException(Exception):
+    # TODO Add docs
 
     def __init__(self, message=None):
+        # TODO Add docs
         self._message = str(message) if message is not None else None
 
     @property
@@ -92,6 +98,7 @@ class PrintableException(Exception):
 
     @property
     def shortDescription(self):
+        # TODO Add docs
         desc = self.__class__.__name__
         if self._message is not None:
             desc += f": {self._message}"
@@ -108,9 +115,11 @@ class PrintableException(Exception):
 
 
 class HttpException(PrintableException):
+    # TODO Add docs
 
     @staticmethod
     def build(statusCode, statusMessage=None, message=None):
+        # TODO Add docs
         fields = {"statusCode": statusCode}
         if statusMessage != None:
             fields["statusMessage"] = statusMessage
@@ -126,6 +135,7 @@ class HttpException(PrintableException):
 
     @property
     def shortDescription(self):
+        # TODO Add docs
         return f"{super().shortDescription} ({self.statusCode} {self.statusMessage})"
 
     @property
