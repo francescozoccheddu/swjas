@@ -192,7 +192,81 @@ class EvenNumberField(TypeField):
         return value
 ```
 
+
 ## Exceptions
-Coming soon...
+
+### Usage
+Any uncatched `exceptions.HttpException` will be serialized and added to the response body and will set the corresponding Http response status.  
+Any `exception.PrintableException` cause set with the `raise ... from` syntax will be added to the response body too.
+
+### Examples
+Raise an `HttpException`
+```python
+from swjas.exceptions import AuthenticationException, NotFoundException
+if not authenticated:
+    raise AuthenticationException("Requested object requires authentication")
+elif not exists:
+    raise NotFoundException("Requested object does not exist")
+```
+Raise an `HttpException` with cause
+```python
+try:
+    validateRequest(data)
+except Exception as e:
+    from swjas.exceptions import BadRequestException
+    raise BadRequestException("Error while validating the request") from e
+```
+Create an `HttpException` on the fly
+```python
+from swjas.exceptions import HttpException
+raise HttpException.build(410)
+```
+Define an `HttpException`
+```python
+from swjas.exceptions import HttpException
+
+class GoneException(HttpException):
+    statusCode = 410
+```
+
+
 ## Client
-Coming soon...
+
+### Usage
+Run `python -m swjas.client -h` from command line or call `client.request` or `client.service` functions.
+
+### Examples
+Send a request providing JSON body via command line
+```
+>>> python -m swjas.client localhost:8080/signup --outputstatus --indent 4 > response.json
+{
+    "username": "Francesco,
+    "password": 12345  
+}
+^Z
+```
+Send a request providing JSON body via file
+```
+>>> python -m swjas.client localhost:8080/signup --if request.json
+{
+    "result": "success"
+}
+```
+Send a request via script
+```python
+from swjas.client import RequestErrorException, request
+
+data = {
+    "username": "Francesco",
+    "password": 12345
+}
+
+try:
+    res = request("localhost:8080/signup", data)
+except RequestErrorException as e:
+    print(f"{e.statusCode}: {e.statusMessage}")
+    print(e.data)
+except Exception:
+    print("Request failed")
+```
+

@@ -1,7 +1,7 @@
 from . import exceptions
 
 
-class _RequestErrorException(Exception):
+class RequestErrorException(Exception):
 
     def __init__(self, data, statusCode):
         super().__init__()
@@ -85,7 +85,7 @@ def request(url, data=None, timeout=15):
     res = requests.post(url.geturl(), json=data, timeout=timeout)
 
     if not res.ok:
-        raise _RequestErrorException(res.json(), res.status_code)
+        raise RequestErrorException(res.json(), res.status_code)
 
     return res.json()
 
@@ -166,7 +166,7 @@ def _main():
         try:
             rawResult = request(args.url, jsonInput, args.timeout)
             printResult(200, rawResult)
-        except _RequestErrorException as e:
+        except RequestErrorException as e:
             printResult(e.statusCode, e.data)
             sys.exit(2)
         except Exception:
