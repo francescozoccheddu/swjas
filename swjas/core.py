@@ -44,7 +44,11 @@ def makeApplication(routes):
         allowPost = True
         # Catch HTTP exceptions
         try:
-            path = environ.get("PATH_INFO", "").strip("/")
+            path = environ.get("PATH_INFO", "")
+            if path.startswith("/") or path.startswith("\\"):
+                path = path[1:]
+            if path.endswith("/") or path.endswith("\\"):
+                path = path[:-1]
             # Ensure JSON accepted
             # TODO Check 'Accept' header
             # Collect accepted charsets

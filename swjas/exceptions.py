@@ -135,7 +135,6 @@ class HttpException(PrintableException):
 
     @property
     def shortDescription(self):
-        # TODO Add docs
         return f"{super().shortDescription} ({self.statusCode} {self.statusMessage})"
 
     @property
