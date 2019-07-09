@@ -1,9 +1,15 @@
 from . import exceptions
 
 
-class RequestErrorException(Exception):
+class RequestException(exceptions.PrintableException):
 
-    def __init__(self, data, statusCode):
+    def __init__(self):
+        super().__init__()
+
+
+class HttpException(RequestException):
+
+    def __init__(self, statusCode, data):
         super().__init__()
         self._data = data
         self._statusCode = statusCode
@@ -20,11 +26,30 @@ class RequestErrorException(Exception):
     def statusMessage(self):
         return exceptions.getStatusMessage(self._statusCode)
 
-    def __str__(self):
-        txt = f"Request failed: {self._statusCode} {self.statusMessage}"
+    @property
+    def shortDescription(self):
+        return f"{super().shortDescription} ({self.statusCode} {self.statusMessage})"
+
+    @property
+    def _json(self):
+        json = super()._json
+        json["statusCode"] = self.statusCode
+        json["statusMessage"] = self.statusMessage
         if self._data is not None:
-            txt += f"\n{self._data}"
-        return txt
+            json["data"] = self._data
+        return json
+
+
+class TimeoutException(RequestException):
+    pass
+
+
+class ConnectionException(RequestException):
+    pass
+
+
+class JSONDecodeException(RequestException):
+    pass
 
 
 def service(service, host, data=None, timeout=15):
@@ -82,12 +107,30 @@ def request(url, data=None, timeout=15):
 
     # TODO Compress
 
-    res = requests.post(url.geturl(), json=data, timeout=timeout)
+    try:
+        res = requests.post(url.geturl(), json=data, timeout=timeout, allow_redirects=False)
+        if not res.ok:
+            res.raise_for_status()
+    except requests.HTTPError as e:
+        try:
+            data = e.response.json()
+        except ValueError:
+            data = None
+        raise HttpException(e.response.status_code, data)
+    except requests.Timeout:
+        raise TimeoutException()
+    except requests.ConnectionError:
+        raise ConnectionException()
+    except requests.RequestException:
+        raise RequestException()
 
-    if not res.ok:
-        raise RequestErrorException(res.json(), res.status_code)
-
-    return res.json()
+    if res.text == "" or res.text.isspace():
+        return None
+    else:
+        try:
+            return res.json()
+        except ValueError:
+            raise JSONDecodeException()
 
 
 def _main():
@@ -137,6 +180,9 @@ def _main():
             except IOError as e:
                 logger.error("Error while reading from input file:\n%s", e.strerror)
                 sys.exit(1)
+            except UnicodeDecodeError as e:
+                logger.error("Error while decoding input file text")
+                sys.exit(1)
         else:
             rawInput = sys.stdin.read()
 
@@ -145,11 +191,10 @@ def _main():
         try:
             jsonInput = json.loads(rawInput)
         except json.JSONDecodeError as e:
-            logger.exception("Error while parsing input:\n%s (line %s, column %s)", e.msg, e.lineno, e.colno)
+            logger.error("Error while parsing input:\n%s (line %s, column %s)", e.msg, e.lineno, e.colno)
             sys.exit(1)
 
         def printResult(statusCode, data):
-            from .core import JSONEncoder
             if args.outputstatus:
                 out = {
                     "statusCode": statusCode,
@@ -161,17 +206,18 @@ def _main():
                 if not exceptions.isOKStatus(statusCode):
                     logger.error("Bad HTTP response (%s %s)", statusCode, exceptions.getStatusMessage(statusCode))
             indent = args.indent if args.indent > 0 else None
-            print(json.dumps(out, indent=indent, cls=JSONEncoder))
+            print(json.dumps(out, indent=indent))
 
         try:
-            rawResult = request(args.url, jsonInput, args.timeout)
-            printResult(200, rawResult)
-        except RequestErrorException as e:
+            data = request(args.url, jsonInput, args.timeout)
+        except HttpException as e:
             printResult(e.statusCode, e.data)
             sys.exit(2)
-        except Exception:
-            logger.exception("Error while performing request")
+        except RequestException as e:
+            logger.error("%s", e)
             sys.exit(1)
+        else:
+            printResult(200, data)
 
     except KeyboardInterrupt:
         logger.info("Interrupted by user")
