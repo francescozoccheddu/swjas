@@ -79,6 +79,7 @@ class PrintableException(Exception):
 
     def __init__(self, message=None):
         # TODO Add docs
+        super().__init__()
         self._message = str(message) if message is not None else None
 
     @property
@@ -173,8 +174,3 @@ class NotImplementedException(HttpException):
     statusCode = 501
 
 
-class JSONDecodeException(PrintableException):
-
-    def __init__(self, cause=None):
-        message = f"{cause.msg} (line {cause.lineno}, column {cause.colno})" if cause is not None else None
-        super().__init__(message)
