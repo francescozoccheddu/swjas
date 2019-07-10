@@ -200,16 +200,12 @@ def makeApplication(routes, allowEmptyRequestBody=True):
         # Encode
         def overrideCharsetWeight(c, w): return 2 if c.lower() == "utf-8" else w
         acceptedCharsets = _parseHeaderWeightedList(environ.get("HTTP_ACCEPT_CHARSET", ""), overrideCharsetWeight)
-        acceptedEncodingTypes = _parseHeaderWeightedList(environ.get("HTTP_ACCEPT_ENCODING", ""))
-        if len(acceptedEncodingTypes) == 0 or "*" in acceptedCharsets:
-            acceptedCharsets += ["identity"]
+        acceptedEncodingTypes = _parseHeaderWeightedList(environ.get("HTTP_ACCEPT_ENCODING", "")) + ["identity"]
 
-        responseBody, chosenCharset, chosenEncoding = encoding.tryEncode(responseBody, acceptedCharsets + ["utf-8"], acceptedEncodingTypes + ["identity"])
+        responseBody, chosenCharset, chosenEncoding = encoding.tryEncode(responseBody, acceptedCharsets + ["utf-8"], acceptedEncodingTypes)
 
         if not chosenCharset in acceptedCharsets:
             _logger.info(f"No accepted charset found for request to path '{path}': serving utf-8 anyway")
-        if not chosenEncoding in acceptedEncodingTypes:
-            _logger.info(f"No accepted encoding type found for request to path '{path}': serving uncompressed data anyway")
 
         responseHeaders += [("Content-Type", f"application/json;charset={chosenCharset}")]
         responseHeaders += [("Content-Encoding", chosenEncoding)]
