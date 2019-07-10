@@ -1,4 +1,7 @@
 from . import exceptions
+from . import encoding as swjasEncoding
+import requests
+from urllib import parse
 
 
 class RequestException(exceptions.PrintableException):
@@ -52,37 +55,56 @@ class JSONDecodeException(RequestException):
     pass
 
 
-def service(service, host, data=None, timeout=15):
+class URLException(exceptions.PrintableException):
+    pass
+
+
+def validateUrl(url):
+    url = parse.urlparse(url)
+    if not url.netloc:
+        raise URLException("URL has no netloc")
+    if any([url.query, url.params, url.fragment]):
+        raise URLException("URL cannot include parameters, query or fragment")
+    if url.scheme:
+        if url.scheme != "http":
+            raise URLException("Expected http scheme")
+    else:
+        url = url._replace(scheme="http")
+    return url.geturl()
+
+
+def validateHost(host):
+    host = parse.urlparse(host)
+    if not host.netloc:
+        raise URLException("Host has no netloc")
+    if any([host.path, host.query, host.params, host.fragment]):
+        raise URLException("Host cannot include path, parameters, query or fragment")
+    if host.scheme and host.scheme != "http":
+        raise URLException("Expected http scheme")
+    return host.netloc
+
+
+def validateService(service):
+    service = parse.urlparse(service)
+    if not service.path:
+        raise URLException("Service has no path")
+    if any([service.netloc, service.scheme, service.query, service.params, service.fragment]):
+        raise URLException("Service cannot include scheme, netloc, parameters, query or fragment")
+    return service.path
+
+
+def service(host, service, data=None, timeout=15, encoding="identity"):
     # TODO Add docs
 
-    if not isinstance(service, str):
-        raise TypeError("Service must be string")
-    if not isinstance(host, str):
-        raise TypeError("Host must be string")
-    if not isinstance(timeout, (int, float)):
-        raise TypeError("Timeout must be int or float")
-
-    from urllib import parse
-    host = parse.urlparse(host)
-
-    if (not all([host.netloc])) or any([host.path, host.query, host.params, host.fragment]):
-        raise ValueError("Invalid host")
-    if host.scheme:
-        if host.scheme != "http":
-            raise ValueError("Expected http scheme")
-    else:
-        host = host._replace(scheme="http")
-
-    service = parse.urlparse(service)
-    if (not all([service.path])) or any([service.scheme, service.query, service.params, service.fragment]):
-        raise ValueError("Invalid service")
+    host = validateHost(host)
+    service = validateService(service)
 
     url = parse.urljoin(host.geturl(), service.geturl())
 
     return request(url, data, timeout)
 
 
-def request(url, data=None, timeout=15):
+def request(url, data=None, timeout=15, encoding="identity"):
     # TODO Add docs
 
     if not isinstance(url, str):
@@ -92,23 +114,20 @@ def request(url, data=None, timeout=15):
     if timeout <= 0:
         raise ValueError("Timeout must be positive")
 
-    from urllib import parse
-    url = parse.urlparse(url)
+    url = validateUrl(url)
 
-    if (not all([url.netloc, url.path])) or any([url.query, url.params, url.fragment]):
-        raise ValueError("Invalid url")
-    if url.scheme:
-        if url.scheme != "http":
-            raise ValueError("Expected http scheme")
-    else:
-        url = url._replace(scheme="http")
+    data = swjasEncoding.toJsonString(data)
+    data = swjasEncoding.encode(data, encoding=encoding)
 
-    import requests
-
-    # TODO Compress
+    headers = {
+        "Content-Type": "application/json;charset=utf-8",
+        "Content-Encoding": encoding,
+        "Accept-Charset": "utf-8",
+        "Accept": "application/json"
+    }
 
     try:
-        res = requests.post(url.geturl(), json=data, timeout=timeout, allow_redirects=False)
+        res = requests.post(url, data=data, timeout=timeout, allow_redirects=False, headers=headers)
         if not res.ok:
             res.raise_for_status()
     except requests.HTTPError as e:
@@ -138,7 +157,6 @@ def _main():
     import argparse
 
     def makeArgparseRangeType(min, max, integer):
-        import argparse
 
         def validate(arg):
             try:
@@ -152,19 +170,25 @@ def _main():
         return validate
 
     def argparseFileType(arg):
-        import argparse
         import os
         path = os.path.abspath(arg)
         if not os.path.exists(path):
             raise argparse.ArgumentTypeError(f"file '{path}' does not exist")
         return arg
 
+    def argparseUrlType(arg):
+        try:
+            return validateUrl(arg)
+        except URLException as e:
+            raise argparse.ArgumentTypeError(e.message)
+
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument("url", metavar="URL", help="Request URL")
+    parser.add_argument("url", metavar="URL", help="Request URL", type=argparseUrlType)
     parser.add_argument("-if", "--inputfile", metavar="INPUT_FILE", default=None, help="Use an input file instead of stdin", type=argparseFileType)
     parser.add_argument("-to", "--timeout", default=15, metavar="TIMEOUT", help="Request timeout seconds", type=makeArgparseRangeType(1, 60, False))
     parser.add_argument("--indent", default=4, metavar="SPACES", help="Indentation tab size (-1 to minify)", type=makeArgparseRangeType(-1, 10, True))
     parser.add_argument("--outputstatus", action="store_true", help="Output a JSON object containing status info and response")
+    parser.add_argument("--encoding", default="identity", metavar="ENCODING", choices=swjasEncoding._dataEncoders.keys(), help="Request encoding type")
     args = parser.parse_args()
 
     try:
@@ -209,7 +233,7 @@ def _main():
             print(json.dumps(out, indent=indent))
 
         try:
-            data = request(args.url, jsonInput, args.timeout)
+            data = request(args.url, jsonInput, args.timeout, args.encoding)
         except HttpException as e:
             printResult(e.statusCode, e.data)
             sys.exit(2)
