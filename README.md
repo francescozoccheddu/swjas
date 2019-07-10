@@ -25,8 +25,11 @@ Call `core.makeApplication` to create your WSGI application.
                     Deserialied JSON request body if any, otherwhise `None`
                 - **Returns**  
                 JSON serializable object or `None`.  
-                `datetime.datetime` objects have built-in serialization support.  
-                Custom objects can be serialized if they provide a `_json` property that returns a JSON serializable object.
+                (Note: `datetime.datetime` objects have built-in serialization support)  
+                (Note: Custom objects can be serialized if they provide a `_json` property that returns a JSON serializable object)
+        - `allowEmptyRequestBody` : `bool` (`True` by default)  
+        In the case of empty or space request body, if `True` handler argument will be `None`, otherwise a `BadRequestException` will be raised.  
+        (Note: if `True` empty or space request body will not be distinguishable from `null` body)
     - **Returns**  
     WSGI application.
 
