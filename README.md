@@ -238,37 +238,36 @@ Send requests.
 Run `python -m swjas.client -h` from command line or call `client.request` or `client.service` functions.
 
 ### Examples
-Send a request providing JSON body via command line
+Send a request providing JSON body via command line and save result to JSON file
 ```
->>> python -m swjas.client localhost:8080/signup --outputstatus --indent 4 > response.json
+>>> python -m swjas.client //localhost:8080/signup --outputstatus --indent 4 > response.json
 {
     "username": "Francesco",
-    "password": 12345  
+    "password": "12345"  
 }
 ^Z
 ```
-Send a request providing JSON body via file
+Send a request providing JSON body via file and print result to console
 ```
->>> python -m swjas.client localhost:8080/signup --if request.json
+>>> python -m swjas.client //localhost:8080/signup --if request.json
 {
     "result": "success"
 }
 ```
 Send a request via script
 ```python
-from swjas.client import RequestErrorException, request
+from swjas.client import HttpException, RequestException, request
 
 data = {
     "username": "Francesco",
-    "password": 12345
+    "password": "12345"
 }
 
 try:
-    res = request("localhost:8080/signup", data)
-except RequestErrorException as e:
-    print(f"{e.statusCode}: {e.statusMessage}")
-    print(e.data)
-except Exception:
-    print("Request failed")
+    res = request("//localhost:8080/signup", data)
+except HttpException as e:
+    print(f"{e.statusCode}: {e.statusMessage}\n{e.data}")
+except RequestException as e:
+    print(f"Request failed: {e}")
 ```
 
