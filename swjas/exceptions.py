@@ -2,6 +2,8 @@
 
 def getStatusMessage(statusCode, default="Unknown status"):
     # TODO Add docs
+    if not isinstance(statusCode, int):
+        raise TypeError("Status code must be int")
     return {
         100: 'Continue',
         101: 'Switching Protocols',
@@ -71,79 +73,89 @@ def getStatusMessage(statusCode, default="Unknown status"):
 
 def isOKStatus(statusCode):
     # TODO Add docs
+    if not isinstance(statusCode, int):
+        raise TypeError("Status code must be int")
     return 200 <= statusCode < 300
 
 
 class PrintableException(Exception):
     # TODO Add docs
 
-    def __init__(self, message=None):
+    def __init__(self, **kwargs):
         # TODO Add docs
-        super().__init__()
-        self._message = str(message) if message is not None else None
-
-    @property
-    def message(self):
-        return self._message
+        super().__init__(kwargs)
 
     @property
     def _json(self):
         json = {
-            "type": self.__class__.__name__
+            "type": self.__class__,
         }
         if isinstance(self.__cause__, PrintableException):
-            json["cause"] = self.__cause__._json
-        if self._message is not None:
-            json["message"] = self._message
+            json["cause"] = self.__cause__
+        json = {**json, **self.dict}
         return json
 
-    @property
-    def shortDescription(self):
+    def __getitem__(self, name):
+        return self.dict[name]
+
+    def __getattr__(self, name):
+        try:
+            return super().__getattr__(name)
+        except AttributeError as e:
+            try:
+                return self[name]
+            except KeyError:
+                raise e from None
+
+    @staticmethod
+    def naifDictDescription(dict):
         # TODO Add docs
-        desc = self.__class__.__name__
-        if self._message is not None:
-            desc += f": {self._message}"
+        desc = ""
+        for key, value in dict.items():
+            if desc != "":
+                desc += ", "
+            if isinstance(value, str):
+                value = f"'{value}'"
+            desc += f"{key}={value}"
         return desc
 
+    @property
+    def dict(self):
+        return self.args[0]
+
     def __str__(self):
-        txt = self.shortDescription
-        if isinstance(self.__cause__, PrintableException):
-            txt += f"\nCaused by:\n{self.__cause__}"
+        desc = PrintableException.naifDictDescription(self.dict)
+        txt = self.__class__.__name__
+        if desc != "":
+            txt += ": "
+        txt += desc
         return txt
 
     def __repr__(self):
-        return repr(self._json)
+        return f"{self.__class__.__name__}(**{repr(self.dict)})"
 
 
 class HttpException(PrintableException):
     # TODO Add docs
+    
+    statusMessage = None
 
     @staticmethod
-    def build(statusCode, statusMessage=None, message=None):
+    def build(statusCode, statusMessage=None, **kwargs):
         # TODO Add docs
         fields = {"statusCode": statusCode}
-        if statusMessage != None:
+        if statusMessage is not None:
             fields["statusMessage"] = statusMessage
-        return type("HttpException", (HttpException,), fields)(message)
+        return type("HttpException", (HttpException,), fields)(**kwargs)
 
-    @property
-    def statusCode(self):
-        raise NotImplementedError
-
-    @property
-    def statusMessage(self):
-        return getStatusMessage(self.statusCode)
-
-    @property
-    def shortDescription(self):
-        return f"{super().shortDescription} ({self.statusCode} {self.statusMessage})"
-
-    @property
-    def _json(self):
-        json = super()._json
-        json["statusCode"] = self.statusCode
-        json["statusMessage"] = self.statusMessage
-        return json
+    def __init__(self, **kwargs):
+        if not isinstance(self.statusCode, int):
+            raise TypeError("Status code must be int")
+        if self.statusMessage is None:
+            self.statusMessage = getStatusMessage(self.statusCode)
+        elif not isinstance(self.statusMessage, str):
+            raise TypeError("Status message must be str or None")
+        super().__init__(statusCode=self.statusCode, statusMessage=self.statusMessage, **kwargs)
 
 
 class AuthorizationException(HttpException):
@@ -172,5 +184,3 @@ class ServiceUnavailableException(HttpException):
 
 class NotImplementedException(HttpException):
     statusCode = 501
-
-

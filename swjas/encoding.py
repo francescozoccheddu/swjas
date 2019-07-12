@@ -11,13 +11,9 @@ class JsonException(exceptions.PrintableException):
 
 
 class JsonEncodeException(JsonException):
-    pass
 
-
-class JsonEncodeObjectException(JsonEncodeException):
-
-    def __init__(self, obj, message=None):
-        super().__init__(message=message)
+    def __init__(self, obj, **kwargs):
+        super().__init__(**kwargs)
         self._object = obj
 
     @property
@@ -27,9 +23,21 @@ class JsonEncodeObjectException(JsonEncodeException):
 
 class JSONDecodeException(JsonException):
 
-    def __init__(self, cause=None):
-        message = f"{cause.msg} (line {cause.lineno}, column {cause.colno})" if cause is not None else None
-        super().__init__(message=message)
+    def __init__(self, source, cause=None, **kwargs):
+        self._source = source
+        if cause is None:
+            super().__init__()
+        else:
+            if not isinstance(cause, json.JSONDecodeError):
+                raise TypeError("Cause must be json.JSONDecodeError")
+            super().__init__(message=cause.msg, line=cause.lineno, column=cause.colno)
+
+    @property
+    def source(self):
+        return self._source
+
+
+strfyUnknownObjectTypes = False
 
 
 class _JSONEncoder(json.JSONEncoder):
@@ -37,21 +45,24 @@ class _JSONEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, datetime):
             return obj.isoformat()
+        if isinstance(obj, type):
+            return obj.__name__
         try:
             if hasattr(obj, "_json"):
                 return obj._json
-            return json.JSONEncoder.default(self, obj)
         except Exception as e:
-            raise JsonEncodeObjectException(obj) from e
+            raise JsonEncodeException(obj) from e
+        try:
+            return json.JSONEncoder.default(self, obj)
+        except TypeError as e:
+            if strfyUnknownObjectTypes:
+                return str(obj)
+            else:
+                raise JsonEncodeException(obj) from e
 
 
 def toJsonString(obj, indent=None, ensureAscii=True):
-    try:
-        return json.dumps(obj, cls=_JSONEncoder, indent=indent, ensure_ascii=ensureAscii)
-    except JsonEncodeObjectException as e:
-        raise e
-    except Exception as e:
-        raise JsonEncodeException() from e
+    return json.dumps(obj, cls=_JSONEncoder, indent=indent, ensure_ascii=ensureAscii)
 
 
 def fromJsonString(js, allowEmpty=True):
@@ -60,7 +71,7 @@ def fromJsonString(js, allowEmpty=True):
     try:
         return json.loads(js)
     except json.JSONDecodeError as e:
-        raise JSONDecodeException(e)
+        raise JSONDecodeException(js, e)
 
 
 class EncodingException(exceptions.PrintableException):
@@ -73,13 +84,10 @@ class StringEncodingException(EncodingException):
 
 class UnknownCharsetException(StringEncodingException):
 
-    def __init__(self, charset):
-        super().__init__(message=f"Unknown charset '{charset}'")
-        self._charset = charset
-
-    @property
-    def charset(self):
-        return self._charset
+    def __init__(self, charset, **kwargs):
+        if not isinstance(charset, str):
+            raise TypeError("Charset must be str")
+        super().__init__(charset=charset, message=f"Unknown charset '{charset}'", **kwargs)
 
 
 def _stringEncoding(data, charset, decode):
@@ -99,7 +107,7 @@ def _stringEncoding(data, charset, decode):
     except LookupError:
         raise UnknownCharsetException(charset)
     except:
-        raise StringEncodingException()
+        raise StringEncodingException(charset=charset, message=f"Error while {'de' if decode else 'en'}coding string")
 
 
 class DataEncodingException(EncodingException):
@@ -108,13 +116,10 @@ class DataEncodingException(EncodingException):
 
 class UnknownEncodingTypeException(DataEncodingException):
 
-    def __init__(self, encoding):
-        super().__init__(message=f"Unknown encoding type '{encoding}'")
-        self._encoding = encoding
-
-    @property
-    def encoding(self):
-        return self._encoding
+    def __init__(self, encoding, **kwargs):
+        if not isinstance(encoding, str):
+            raise TypeError("Encoding must be str")
+        super().__init__(encoding=encoding, message=f"Unknown encoding type '{encoding}'", **kwargs)
 
 
 _dataEncoders = {
@@ -144,7 +149,7 @@ def _dataEncoding(data, encoding, decode):
     try:
         return encoder(data)
     except:
-        raise DataEncodingException()
+        raise DataEncodingException(encoding=encoding, message=f"Error while {'de' if decode else 'en'}coding data'")
 
 
 def encodeData(data, encoding):
