@@ -6,45 +6,32 @@ from urllib import parse
 
 class RequestException(exceptions.PrintableException):
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, requestBody, **kwargs):
+        super().__init__(**kwargs)
+        self._requestBody = requestBody
+
+    @property
+    def requestBody(self):
+        return self._requestBody
 
 
 class HttpException(RequestException):
 
-    def __init__(self, statusCode, data):
-        super().__init__()
-        self._data = data
-        self._statusCode = statusCode
+    def __init__(self, requestBody, responseBody, statusCode, **kwargs):
+        if not isinstance(statusCode, int):
+            raise TypeError("Status code must be int")
+        super().__init__(requestBody, statusCode=statusCode, statusMessage=exceptions.getStatusMessage(statusCode), **kwargs)
+        self._responseBody = responseBody
 
     @property
-    def data(self):
-        return self._data
-
-    @property
-    def statusCode(self):
-        return self._statusCode
-
-    @property
-    def statusMessage(self):
-        return exceptions.getStatusMessage(self._statusCode)
-
-    @property
-    def shortDescription(self):
-        return f"{super().shortDescription} ({self.statusCode} {self.statusMessage})"
-
-    @property
-    def _json(self):
-        json = super()._json
-        json["statusCode"] = self.statusCode
-        json["statusMessage"] = self.statusMessage
-        if self._data is not None:
-            json["data"] = self._data
-        return json
+    def responseBody(self):
+        return self._responseBody
 
 
 class TimeoutException(RequestException):
-    pass
+
+    def __init__(self, requestBody, timeout, **kwargs):
+        super().__init__(requestBody, timeout=timeout, **kwargs)
 
 
 class ConnectionException(RequestException):
@@ -56,44 +43,52 @@ class JSONDecodeException(RequestException):
 
 
 class URLException(exceptions.PrintableException):
-    pass
+
+    def __init__(self, url, message, **kwargs):
+        super().__init__(url=url, message=message, **kwargs)
 
 
 def validateUrl(url):
+    if not isinstance(url, str):
+        raise TypeError("Expected str")
     url = parse.urlparse(url)
     if not url.netloc:
-        raise URLException("URL has no netloc")
+        raise URLException(url, "URL has no netloc")
     if any([url.query, url.params, url.fragment]):
-        raise URLException("URL cannot include parameters, query or fragment")
+        raise URLException(url, "URL cannot include parameters, query or fragment")
     if url.scheme:
         if url.scheme != "http":
-            raise URLException("Expected http scheme")
+            raise URLException(url, "Expected http scheme")
     else:
         url = url._replace(scheme="http")
     return url.geturl()
 
 
 def validateHost(host):
+    if not isinstance(host, str):
+        raise TypeError("Expected str")
     host = parse.urlparse(host)
     if not host.netloc:
-        raise URLException("Host has no netloc")
+        raise URLException(host, "Host has no netloc")
     if any([host.path, host.query, host.params, host.fragment]):
-        raise URLException("Host cannot include path, parameters, query or fragment")
+        raise URLException(host, "Host cannot include path, parameters, query or fragment")
     if host.scheme and host.scheme != "http":
-        raise URLException("Expected http scheme")
+        raise URLException(host, "Expected http scheme")
     return host.netloc
 
 
 def validateService(service):
+    if not isinstance(service, str):
+        raise TypeError("Expected str")
     service = parse.urlparse(service)
     if not service.path:
-        raise URLException("Service has no path")
+        raise URLException(service, "Service has no path")
     if any([service.netloc, service.scheme, service.query, service.params, service.fragment]):
-        raise URLException("Service cannot include scheme, netloc, parameters, query or fragment")
+        raise URLException(service, "Service cannot include scheme, netloc, parameters, query or fragment")
     return service.path
 
 
-def service(host, service, data=None, timeout=15, encoding="identity"):
+def service(host, service, **kwargs):
     # TODO Add docs
 
     host = validateHost(host)
@@ -101,10 +96,10 @@ def service(host, service, data=None, timeout=15, encoding="identity"):
 
     url = parse.urljoin(host.geturl(), service.geturl())
 
-    return request(url, data, timeout)
+    return request(url, **kwargs)
 
 
-def request(url, data=None, timeout=15, encoding="identity"):
+def request(url, body=None, timeout=15, encoding="identity"):
     # TODO Add docs
 
     if not isinstance(url, str):
@@ -116,8 +111,8 @@ def request(url, data=None, timeout=15, encoding="identity"):
 
     url = validateUrl(url)
 
-    data = swjasEncoding.toJsonString(data)
-    data = swjasEncoding.encode(data, encoding=encoding)
+    body = swjasEncoding.toJsonString(body)
+    body = swjasEncoding.encode(body, encoding=encoding)
 
     headers = {
         "Content-Type": "application/json;charset=utf-8",
@@ -127,29 +122,25 @@ def request(url, data=None, timeout=15, encoding="identity"):
     }
 
     try:
-        res = requests.post(url, data=data, timeout=timeout, allow_redirects=False, headers=headers)
+        res = requests.post(url, data=body, timeout=timeout, allow_redirects=False, headers=headers)
         if not res.ok:
             res.raise_for_status()
     except requests.HTTPError as e:
         try:
-            data = e.response.json()
-        except ValueError:
-            data = None
-        raise HttpException(e.response.status_code, data)
+            resBody = swjasEncoding.fromJsonString(res.text)
+        except swjasEncoding.JSONDecodeException:
+            resBody = None
+        raise HttpException(body, resBody, e.response.status_code) from None
     except requests.Timeout:
-        raise TimeoutException()
+        raise TimeoutException(body, timeout) from None
     except requests.ConnectionError:
-        raise ConnectionException()
+        raise ConnectionException(body) from None
     except requests.RequestException:
-        raise RequestException()
-
-    if res.text == "" or res.text.isspace():
-        return None
-    else:
-        try:
-            return res.json()
-        except ValueError:
-            raise JSONDecodeException()
+        raise RequestException(body) from None
+    try:
+        return swjasEncoding.fromJsonString(res.text, False)
+    except swjasEncoding.JSONDecodeException as e:
+        raise JSONDecodeException(body) from e
 
 
 def _main():
@@ -210,41 +201,41 @@ def _main():
         else:
             rawInput = sys.stdin.read()
 
-        import json
+        jsonInput = swjasEncoding.fromJsonString(rawInput)
 
-        try:
-            jsonInput = json.loads(rawInput)
-        except json.JSONDecodeError as e:
-            logger.error("Error while parsing input:\n%s (line %s, column %s)", e.msg, e.lineno, e.colno)
-            sys.exit(1)
-
-        def printResult(statusCode, data):
-            if args.outputstatus:
-                out = {
-                    "statusCode": statusCode,
-                    "statusMessage": exceptions.getStatusMessage(statusCode),
-                    "data": data
-                }
-            else:
-                out = data
-                if not exceptions.isOKStatus(statusCode):
-                    logger.error("Bad HTTP response (%s %s)", statusCode, exceptions.getStatusMessage(statusCode))
+        def output(out):
             indent = args.indent if args.indent > 0 else None
-            print(json.dumps(out, indent=indent))
+            print(swjasEncoding.toJsonString(out, indent=indent))
+
+        def outputResult(status, response):
+            output({
+                "statusCode": status,
+                "statusMessage": exceptions.getStatusMessage(status),
+                "data": response
+            })
+        
+        def outputError(exception):
+            output({
+                "error": exception
+            })
 
         try:
-            data = request(args.url, jsonInput, args.timeout, args.encoding)
+            responseBody = request(args.url, jsonInput, args.timeout, args.encoding)
         except HttpException as e:
-            printResult(e.statusCode, e.data)
-            sys.exit(2)
+            if args.outputstatus:
+                outputResult(e.statusCode, e.responseBody)
+            else:
+                logger.error(e)
         except RequestException as e:
-            logger.error("%s", e)
-            sys.exit(1)
+            if args.outputstatus:
+                outputError(e)
+            else:
+                logger.error(e)
         else:
-            printResult(200, data)
+            outputResult(200, responseBody)
 
     except KeyboardInterrupt:
-        logger.info("Interrupted by user")
+        logger.error("Interrupted by user")
 
 
 if __name__ == "__main__":

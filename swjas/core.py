@@ -106,14 +106,14 @@ def makeApplication(routes, allowEmptyRequestBody=True):
             method = environ.get("REQUEST_METHOD")
             if method != "POST":
                 _logger.info(f"Rejected request to '{path}' with method '{method}'")
-                raise exceptions.HttpException.build(405)
+                raise exceptions.HttpException.build(405, message="Expected POST method", requestedMethod=method)
 
             # Ensure no query
             query = environ.get("QUERY_STRING", "").strip()
             if query != "":
                 allowPost = False
                 _logger.info(f"Rejected request to '{path}' with query '{query}'")
-                raise exceptions.BadRequestException("Unexpected query")
+                raise exceptions.BadRequestException(message="Unexpected query")
 
             # Find handler
             handler = routeDict.get(path)
@@ -136,25 +136,23 @@ def makeApplication(routes, allowEmptyRequestBody=True):
                     _logger.info(f"Request to path '{path}' does not specify content type: assuming JSON")
                 elif requestBodyType != "application/json":
                     _logger.info(f"Rejected request to '{path}' with non-JSON body type")
-                    raise exceptions.HttpException.build(415, message="Expected JSON content type")
+                    raise exceptions.HttpException.build(415, message="Expected JSON content type", requestContentType=requestBodyType)
 
                 requestBodyEncoding = environ.get("HTTP_CONTENT_ENCODING", "")
                 if requestBodyEncoding == "":
                     requestBodyEncoding = "identity"
 
-                print(f"IN: {requestBodyEncoding}")
-
                 try:
                     requestBody = encoding.decode(requestBody, requestBodyCharset, requestBodyEncoding)
                 except encoding.EncodingException as e:
                     _logger.info(f"Rejected request to '{path}' with undecodable body")
-                    raise exceptions.BadRequestException() from e
+                    raise exceptions.BadRequestException(message="Unable to decode request body") from e
 
                 try:
                     jsonRequestBody = encoding.fromJsonString(requestBody, allowEmpty=allowEmptyRequestBody)
                 except encoding.JsonException as e:
                     _logger.info(f"Rejected request to '{path}' with invalid JSON body")
-                    raise exceptions.BadRequestException() from e
+                    raise exceptions.BadRequestException(message="Error while decoding request JSON body") from e
 
                 # Call handler
                 try:
@@ -168,7 +166,7 @@ def makeApplication(routes, allowEmptyRequestBody=True):
                     raise e
                 except Exception as e:
                     _logger.exception(f"Exception while processing request to '{path}'")
-                    raise exceptions.ServerErrorException("Error while processing the request") from e
+                    raise exceptions.ServerErrorException(message="Error while processing the request")
                 else:
                     statusCode = 200
                     statusMessage = "OK"
@@ -177,7 +175,7 @@ def makeApplication(routes, allowEmptyRequestBody=True):
                 # No handler found
                 allowPost = False
                 _logger.info(f"Rejected request to unrouted path '{path}'")
-                raise exceptions.NotFoundException("Invalid path")
+                raise exceptions.NotFoundException(message="Invalid path", path=path)
 
         except exceptions.HttpException as e:
             # Prepare HTTP exception response
@@ -190,7 +188,7 @@ def makeApplication(routes, allowEmptyRequestBody=True):
                 responseBody = encoding.toJsonString(errorize(e))
             except encoding.JsonException:
                 _logger.exception("Error while preparing JSON response for HttpException")
-                fallbackException = exceptions.ServerErrorException("Error while collecting information about a previous error")
+                fallbackException = exceptions.ServerErrorException(message="Error while collecting information about a previous error")
                 statusCode = fallbackException.statusCode
                 statusMessage = fallbackException.message
                 responseBody = encoding.toJsonString(errorize(fallbackException))
@@ -209,8 +207,6 @@ def makeApplication(routes, allowEmptyRequestBody=True):
 
         responseHeaders += [("Content-Type", f"application/json;charset={chosenCharset}")]
         responseHeaders += [("Content-Encoding", chosenEncoding)]
-
-        print(f"OUT: {chosenEncoding}")
 
         # Calculate content length
         responseBodyLength = len(responseBody) if responseBody is not None else 0

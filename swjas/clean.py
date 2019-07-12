@@ -3,7 +3,9 @@ from enum import Enum, auto
 
 
 class FieldException(exceptions.PrintableException):
-    pass
+
+    def __init__(self, message, **kwargs):
+        super().__init__(message=message, **kwargs)
 
 
 def clean(field):
@@ -23,7 +25,7 @@ def clean(field):
                 data = field.clean(data)
                 return func(data)
             except FieldException as e:
-                raise exceptions.BadRequestException("Request validation error") from e
+                raise exceptions.BadRequestException(message="Request data validation error") from e
 
         return wrappedFunc
 
@@ -93,36 +95,28 @@ class Field:
 class TypeField(Field):
     # TODO Add docs
 
-    def __init__(self, type, missing=Do.RAISE, error=Do.RAISE):
+    def __init__(self, type, **kwargs):
         # TODO Add docs
-        super().__init__(missing=missing, error=error)
+        super().__init__(**kwargs)
         self._type = type
 
     @property
     def type(self):
         return self._type
 
-    @staticmethod
-    def formatTypeConstraint(typeConstraint):
-        if isinstance(typeConstraint, type):
-            return typeConstraint.__name__
-        elif isinstance(typeConstraint, (tuple, list)):
-            return " or ".join(map(lambda t: t.__name__, typeConstraint))
-        else:
-            return "<error type>"
-
     def clean(self, value):
         if not isinstance(value, self._type):
-            raise FieldException(f"Expected type {TypeField.formatTypeConstraint(self._type)}")
+            types = list(map(lambda t: t.__name__, list(self._type)))
+            raise FieldException(f"Expected type {' or '.join(types)}", expectedTypes=self._type, foundType=type(value))
         return value
 
 
 class ScalarField(TypeField):
     # TODO Add docs
 
-    def __init__(self, type, min=None, max=None, missing=Do.RAISE, error=Do.RAISE):
+    def __init__(self, type, min=None, max=None, **kwargs):
         # TODO Add docs
-        super().__init__(type, missing=missing, error=error)
+        super().__init__(type, **kwargs)
         self._min = min
         self._max = max
 
@@ -137,38 +131,38 @@ class ScalarField(TypeField):
     def clean(self, value):
         value = super().clean(value)
         if self._min is not None and value < self._min:
-            raise FieldException(f"Value must be >= {self._min}")
+            raise FieldException(f"Value must be >= {self._min}", minValue=self._min, foundValue=value)
         if self._max is not None and value > self._max:
-            raise FieldException(f"Value must be <= {self._max}")
+            raise FieldException(f"Value must be <= {self._max}", maxValue=self._max, foundValue=value)
         return value
 
 
 class IntField(ScalarField):
     # TODO Add docs
 
-    def __init__(self, min=None, max=None, missing=Do.RAISE, error=Do.RAISE):
-        super().__init__(int, min=min, max=max, missing=missing, error=error)
+    def __init__(self, **kwargs):
+        super().__init__(int, **kwargs)
 
 
 class FloatField(ScalarField):
     # TODO Add docs
 
-    def __init__(self, min=None, max=None, missing=Do.RAISE, error=Do.RAISE):
-        super().__init__((int, float), min=min, max=max, missing=missing, error=error)
+    def __init__(self, **kwargs):
+        super().__init__((int, float), **kwargs)
 
 
 class BoolField(TypeField):
     # TODO Add docs
 
-    def __init__(self, missing=Do.RAISE, error=Do.RAISE):
-        super().__init__(bool, missing=missing, error=error)
+    def __init__(self, **kwargs):
+        super().__init__(bool, **kwargs)
 
 
 class StringField(TypeField):
     # TODO Add docs
 
-    def __init__(self, minLength=None, maxLength=None, regex=None, missing=Do.RAISE, error=Do.RAISE):
-        super().__init__(str, missing=missing, error=error)
+    def __init__(self, minLength=None, maxLength=None, regex=None, **kwargs):
+        super().__init__(str, **kwargs)
         self._minLength = minLength
         self._maxLength = maxLength
         import re
@@ -189,20 +183,20 @@ class StringField(TypeField):
     def clean(self, value):
         value = super().clean(value)
         if self._minLength is not None and len(value) < self._minLength:
-            raise FieldException(f'String must be at least {self._minLength} characters long')
+            raise FieldException(f'String must be at least {self._minLength} characters long', minLength=self._minLength, foundLength=len(value))
         if self._maxLength is not None and len(value) > self._maxLength:
-            raise FieldException(f'String cannot be longer than {self._maxLength} characters')
+            raise FieldException(f'String cannot be longer than {self._maxLength} characters', maxLength=self._maxLength, foundLength=len(value))
         if self._regex is not None and not self._regex.match(value):
-            raise FieldException(f'String does not match regex "{self._regex}"')
+            raise FieldException(f'String does not match regex "{self._regex}"', regex=self._regex)
         return value
 
 
 class ListField(TypeField):
     # TODO Add docs
 
-    def __init__(self, minLength=None, maxLength=None, fields=None, missing=Do.RAISE, error=Do.RAISE):
+    def __init__(self, minLength=None, maxLength=None, fields=None, **kwargs):
         # TODO Add docs
-        super().__init__(list, missing=missing, error=error)
+        super().__init__(list, **kwargs)
         self._minLength = minLength
         self._maxLength = maxLength
         self._fields = fields
@@ -222,9 +216,9 @@ class ListField(TypeField):
     def clean(self, value):
         value = super().clean(value)
         if self._minLength is not None and len(value) < self._minLength:
-            raise FieldException(f'List length must be >= {self._minLength}')
+            raise FieldException(f'List length must be >= {self._minLength}', minLength=self._minLength, foundLength=len(value))
         if self._maxLength is not None and len(value) > self._maxLength:
-            raise FieldException(f'List length must be <= {self._maxLength}')
+            raise FieldException(f'List length must be <= {self._maxLength}', maxLength=self._maxLength, foundLength=len(value))
         if self._fields is not None:
             if isinstance(self._fields, list):
                 fields = self._fields
@@ -238,27 +232,27 @@ class ListField(TypeField):
                     try:
                         fields[i].cleanAndAdd(True, item, items.append)
                     except FieldException as e:
-                        raise FieldException(f"Field exception on item {i}") from e
+                        raise FieldException(f"Field exception on item {i}", index=i) from e
                 else:
                     items.append(item)
             value = items
         return value
 
     @staticmethod
-    def byLength(length, fields=None, missing=Do.RAISE, error=Do.RAISE):
-        return ListField(length, length, fields, missing, error)
+    def byLength(length, **kwargs):
+        return ListField(minLength=length, maxLength=length, **kwargs)
 
     @staticmethod
-    def byFields(fields=None, missing=Do.RAISE, error=Do.RAISE):
-        return ListField.byLength(len(fields), fields, missing, error)
+    def byFields(fields, **kwargs):
+        return ListField.byLength(length=len(fields), fields=fields, **kwargs)
 
 
 class TimeField(TypeField):
     # TODO Add docs
 
-    def __init__(self, min=None, max=None, tzAware=None, missing=Do.RAISE, error=Do.RAISE):
+    def __init__(self, min=None, max=None, tzAware=None, **kwargs):
         # TODO Add docs
-        super().__init__(str, missing=missing, error=error)
+        super().__init__(str, **kwargs)
         self._min = min
         self._max = max
         self._tzAware = tzAware
@@ -284,21 +278,21 @@ class TimeField(TypeField):
         except OverflowError as e:
             raise FieldException("Overflow error")
         if self._min is not None and value < self._min:
-            raise FieldException(f"Value must be >= {self._min}")
+            raise FieldException(f"Value must be >= {self._min}", minValue=self._min)
         if self._max is not None and value > self._max:
-            raise FieldException(f"Value must be <= {self._max}")
+            raise FieldException(f"Value must be <= {self._max}", maxValue=self._max)
         if self._tzAware is not None:
             if self._tzAware != (value.tzinfo is not None and value.tzinfo.utcoffset(value) is not None):
-                raise FieldException(f"Value must {'' if self._tzAware else 'not '}be timezone aware")
+                raise FieldException(f"Value must {'' if self._tzAware else 'not '}be timezone aware", expectedTimezoneAware=self._tzAware)
         return value
 
 
 class DictField(TypeField):
     # TODO Add docs
 
-    def __init__(self, fields=None, missing=Do.RAISE, error=Do.RAISE):
+    def __init__(self, fields=None, **kwargs):
         # TODO Add docs
-        super().__init__(dict, missing=missing, error=error)
+        super().__init__(dict, **kwargs)
         self._fields = fields
 
     @property
@@ -316,7 +310,7 @@ class DictField(TypeField):
                             dictionary[key] = v
                         self._fields.cleanAndAdd(True, item, add)
                     except FieldException as e:
-                        raise FieldException(f'Field exception on item "{key}"') from e
+                        raise FieldException(f'Field exception on item "{key}"', key=key) from e
             elif isinstance(self._fields, dict):
                 for key, item in self._fields.items():
                     try:
@@ -325,10 +319,10 @@ class DictField(TypeField):
                         present = key in value
                         self._fields[key].cleanAndAdd(present, value[key] if present else None, add)
                     except FieldException as e:
-                        raise FieldException(f'Field exception on item "{key}"') from e
+                        raise FieldException(f'Field exception on item "{key}"', key=key) from e
                 unexpected = set(value.keys()) - set(self._fields.keys())
                 if len(unexpected) > 0:
-                    raise FieldException(f'Unexpected fields {unexpected}')
+                    raise FieldException(f'Unexpected fields {unexpected}', keys=unexpected)
             else:
                 raise TypeError("Bad fields type")
             value = dictionary
@@ -338,9 +332,9 @@ class DictField(TypeField):
 class OptionField(Field):
     # TODO Add docs
 
-    def __init__(self, field, options, missing=Do.RAISE, error=Do.RAISE):
+    def __init__(self, field, options, **kwargs):
         # TODO Add docs
-        super().__init__(missing=missing, error=error)
+        super().__init__(**kwargs)
         if not isinstance(field, Field):
             raise TypeError("Expected Field type")
         if not isinstance(options, list):
@@ -361,5 +355,6 @@ class OptionField(Field):
         if v not in self._options:
             def strfy(x):
                 return f'"{x}"' if isinstance(x, str) else str(x)
-            raise FieldException(f"Expected {' or '.join(map(strfy,self._options))}")
+            options = list(map(strfy, self._options))
+            raise FieldException(f"Expected {' or '.join(options)}", options=self.options)
         return v
