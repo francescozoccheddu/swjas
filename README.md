@@ -208,9 +208,9 @@ Raise an `HttpException`
 ```python
 from swjas.exceptions import AuthorizationException, NotFoundException
 if not authenticated:
-    raise AuthorizationException("Requested object requires authentication")
+    raise AuthorizationException(message="Requested object requires authentication")
 elif not exists:
-    raise NotFoundException("Requested object does not exist")
+    raise NotFoundException(message="Requested object does not exist")
 ```
 Raise an `HttpException` with cause
 ```python
@@ -218,7 +218,7 @@ try:
     validateRequest(data)
 except Exception as e:
     from swjas.exceptions import BadRequestException
-    raise BadRequestException("Error while validating the request") from e
+    raise BadRequestException(message="Error while validating the request") from e
 ```
 Create an `HttpException` on the fly
 ```python
@@ -269,7 +269,7 @@ data = {
 try:
     res = request("//localhost:8080/signup", data)
 except HttpException as e:
-    print(f"{e.statusCode}: {e.statusMessage}\n{e.data}")
+    print(f"{e.statusCode}: {e.statusMessage}\n{e.responseBody}")
 except RequestException as e:
     print(f"Request failed: {e}")
 ```
