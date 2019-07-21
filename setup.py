@@ -15,7 +15,7 @@ with open(_requirements_file) as f:
 setup(
     name='swjas',
     author='Francesco Zoccheddu',
-    version='0.0.7',
+    version='0.0.8',
     description='Simple WSGI JSON API Server',
     long_description=_readme,
     long_description_content_type='text/markdown',
