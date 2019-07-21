@@ -216,6 +216,9 @@ def makeApplication(routes, allowEmptyRequestBody=True):
         allow = "POST" if allowPost else ""
         responseHeaders += [("Allow", allow)]
 
+        # CORS
+        responseHeaders += [("Access-Control-Allow-Origin", "*")]
+
         # Start response
         startResponse(f"{statusCode} {statusMessage}", responseHeaders)
         return [responseBody]
