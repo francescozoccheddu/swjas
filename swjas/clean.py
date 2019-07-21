@@ -106,8 +106,8 @@ class TypeField(Field):
 
     def clean(self, value):
         if not isinstance(value, self._type):
-            types = list(map(lambda t: t.__name__, list(self._type)))
-            raise FieldException(f"Expected type {' or '.join(types)}", expectedTypes=self._type, foundType=type(value))
+            types = self._type if isinstance(self._type, (tuple, list)) else [self._type]
+            raise FieldException(f"Expected type {' or '.join(map(lambda t: t.__name__, types))}", expectedTypes=self._type, foundType=type(value))
         return value
 
 
