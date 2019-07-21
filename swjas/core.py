@@ -86,8 +86,6 @@ def makeApplication(routes, allowEmptyRequestBody=True):
 
     def application(environ, startResponse):
 
-        allowPost = True
-
         # Capture path
         path = environ.get("PATH_INFO", "")
         if path.startswith("/") or path.startswith("\\"):
@@ -100,82 +98,87 @@ def makeApplication(routes, allowEmptyRequestBody=True):
         if not any(mime in acceptedMimes for mime in ["*/*", "application/*", "application/json"]):
             _logger.info(f"Request to path '{path}' does not accept JSON reponse type: serving JSON anyway")
 
+        # Find handler
+        handler = routeDict.get(path)
+
         # Catch HTTP exceptions
         try:
             # Ensure POST method
             method = environ.get("REQUEST_METHOD")
-            if method != "POST":
-                _logger.info(f"Rejected request to '{path}' with method '{method}'")
-                raise exceptions.HttpException.build(405, message="Expected POST method", requestedMethod=method)
+            if method == "OPTIONS":
+                responseBody = encoding.toJsonString(None)
+                statusCode = 200
+                statusMessage = exceptions.getStatusMessage(200)
+            elif method == "POST":
+                # Ensure no query
+                query = environ.get("QUERY_STRING", "").strip()
+                if query != "":
+                    _logger.info(f"Rejected request to '{path}' with query '{query}'")
+                    raise exceptions.BadRequestException(message="Unexpected query")
 
-            # Ensure no query
-            query = environ.get("QUERY_STRING", "").strip()
-            if query != "":
-                allowPost = False
-                _logger.info(f"Rejected request to '{path}' with query '{query}'")
-                raise exceptions.BadRequestException(message="Unexpected query")
-
-            # Find handler
-            handler = routeDict.get(path)
-            if handler:
-                # Parse request JSON body
-                try:
-                    requestBodyLength = int(environ.get('CONTENT_LENGTH', 0))
-                    requestBody = environ['wsgi.input'].read(requestBodyLength)
-                except:
-                    requestBody = ""
-
-                # Decode body
-                requestBodyType, requestBodyCharset = _parseMime(environ.get("CONTENT_TYPE", ""))
-
-                if requestBodyCharset is None:
-                    _logger.info(f"Request to path '{path}' does not specify content charset: assuming utf-8")
-                    requestBodyCharset = "utf-8"
-
-                if requestBodyType is None:
-                    _logger.info(f"Request to path '{path}' does not specify content type: assuming JSON")
-                elif requestBodyType != "application/json":
-                    _logger.info(f"Rejected request to '{path}' with non-JSON body type")
-                    raise exceptions.HttpException.build(415, message="Expected JSON content type", requestContentType=requestBodyType)
-
-                requestBodyEncoding = environ.get("HTTP_CONTENT_ENCODING", "")
-                if requestBodyEncoding == "":
-                    requestBodyEncoding = "identity"
-
-                try:
-                    requestBody = encoding.decode(requestBody, requestBodyCharset, requestBodyEncoding)
-                except encoding.EncodingException as e:
-                    _logger.info(f"Rejected request to '{path}' with undecodable body")
-                    raise exceptions.BadRequestException(message="Unable to decode request body") from e
-
-                try:
-                    jsonRequestBody = encoding.fromJsonString(requestBody, allowEmpty=allowEmptyRequestBody)
-                except encoding.JsonException as e:
-                    _logger.info(f"Rejected request to '{path}' with invalid JSON body")
-                    raise exceptions.BadRequestException(message="Error while decoding request JSON body") from e
-
-                # Call handler
-                try:
-                    jsonResponseBody = handler(jsonRequestBody)
+                if handler:
+                    # Parse request JSON body
                     try:
-                        responseBody = encoding.toJsonString(jsonResponseBody)
+                        requestBodyLength = int(environ.get('CONTENT_LENGTH', 0))
+                        requestBody = environ['wsgi.input'].read(requestBodyLength)
                     except:
-                        _logger.error("Error while encoding JSON response body")
-                        raise
-                except exceptions.HttpException as e:
-                    raise e
-                except Exception as e:
-                    _logger.exception(f"Exception while processing request to '{path}'")
-                    raise exceptions.ServerErrorException(message="Error while processing the request")
+                        requestBody = ""
+
+                    # Decode body
+                    requestBodyType, requestBodyCharset = _parseMime(environ.get("CONTENT_TYPE", ""))
+
+                    if requestBodyCharset is None:
+                        _logger.info(f"Request to path '{path}' does not specify content charset: assuming utf-8")
+                        requestBodyCharset = "utf-8"
+
+                    if requestBodyType is None:
+                        _logger.info(f"Request to path '{path}' does not specify content type: assuming JSON")
+                    elif requestBodyType != "application/json":
+                        _logger.info(f"Rejected request to '{path}' with non-JSON body type")
+                        raise exceptions.HttpException.build(415, message="Expected JSON content type", requestContentType=requestBodyType)
+
+                    requestBodyEncoding = environ.get("HTTP_CONTENT_ENCODING", "")
+                    if requestBodyEncoding == "":
+                        requestBodyEncoding = "identity"
+
+                    try:
+                        requestBody = encoding.decode(requestBody, requestBodyCharset, requestBodyEncoding)
+                    except encoding.EncodingException as e:
+                        _logger.info(f"Rejected request to '{path}' with undecodable body")
+                        raise exceptions.BadRequestException(message="Unable to decode request body") from e
+
+                    try:
+                        jsonRequestBody = encoding.fromJsonString(requestBody, allowEmpty=allowEmptyRequestBody)
+                    except encoding.JsonException as e:
+                        _logger.info(f"Rejected request to '{path}' with invalid JSON body")
+                        raise exceptions.BadRequestException(message="Error while decoding request JSON body") from e
+
+                    # Call handler
+                    try:
+                        jsonResponseBody = handler(jsonRequestBody)
+                        try:
+                            responseBody = encoding.toJsonString(jsonResponseBody)
+                        except:
+                            _logger.error("Error while encoding JSON response body")
+                            raise
+                    except exceptions.HttpException as e:
+                        raise e
+                    except Exception as e:
+                        _logger.exception(f"Exception while processing request to '{path}'")
+                        raise exceptions.ServerErrorException(message="Error while processing the request")
+                    else:
+                        statusCode = 200
+                        statusMessage = exceptions.getStatusMessage(200)
+
                 else:
-                    statusCode = 200
-                    statusMessage = "OK"
+                    # No handler found
+                    _logger.info(f"Rejected request to unrouted path '{path}'")
+                    raise exceptions.NotFoundException(message="Invalid path", path=path)
 
             else:
-                # No handler found
-                allowPost = False
-                _logger.info(f"Rejected request to unrouted path '{path}'")
-                raise exceptions.NotFoundException(message="Invalid path", path=path)
+                # Unsupported method
+                _logger.info(f"Rejected request to '{path}' with method '{method}'")
+                raise exceptions.HttpException.build(405, message="Expected POST method", requestedMethod=method)
 
         except exceptions.HttpException as e:
             # Prepare HTTP exception response
@@ -213,8 +216,11 @@ def makeApplication(routes, allowEmptyRequestBody=True):
         responseHeaders += [("Content-Length", f"{responseBodyLength}")]
 
         # Provide allowed methods
-        allow = "POST" if allowPost else ""
+        allow = "POST" if handler is not None else ""
         responseHeaders += [("Allow", allow)]
+        if method == "OPTIONS":
+            responseHeaders += [("Access-Control-Allow-Methods", allow)]
+            responseHeaders += [("Access-Control-Allow-Headers", "Accept, Content-Encoding, Content-Type, Accept-Charset, Accept-Encoding")]
 
         # CORS
         responseHeaders += [("Access-Control-Allow-Origin", "*")]
