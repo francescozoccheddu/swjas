@@ -74,7 +74,7 @@ def validateHost(host):
         raise URLException(host, "Host cannot include path, parameters, query or fragment")
     if host.scheme and host.scheme != "http":
         raise URLException(host, "Expected http scheme")
-    return host.netloc
+    return f"//{host.netloc}"
 
 
 def validateService(service):
@@ -94,7 +94,7 @@ def service(host, service, **kwargs):
     host = validateHost(host)
     service = validateService(service)
 
-    url = parse.urljoin(host.geturl(), service.geturl())
+    url = parse.urljoin(host, service)
 
     return request(url, **kwargs)
 
