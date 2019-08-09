@@ -25,7 +25,7 @@ def _cleanRoute(route):
 
 
 _headerWeightedListRegex = re.compile('(?P<value>[^;]*)(;q=(?P<weight>.*))?')
-_mimeRegex = re.compile('(?P<type>[^;]*)[^(;charset=)]*(;charset=(?P<charset>.*))?')
+_mimeRegex = re.compile(r'(?P<type>[^;]*)[^(;\s*charset\s*=)]*(;\s*charset\s*=\s*(?P<charset>[^;]*))?')
 
 
 def _parseMime(header):
@@ -34,10 +34,14 @@ def _parseMime(header):
         match = _mimeRegex.match(header)
         if match is not None:
             t, c = match.group("type"), match.group("charset")
+            print(f"c='{c}'")
+            if t is not None:
+                t = t.strip()
             if c is not None:
-                if c.startswith("/"):
+                c = c.strip()
+                if c.startswith('"'):
                     c = c[1:]
-                if c.endswith("/"):
+                if c.endswith('"'):
                     c = c[:-1]
             return (t, c)
     return (None, None)
