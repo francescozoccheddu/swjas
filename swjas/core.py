@@ -34,7 +34,6 @@ def _parseMime(header):
         match = _mimeRegex.match(header)
         if match is not None:
             t, c = match.group("type"), match.group("charset")
-            print(f"c='{c}'")
             if t is not None:
                 t = t.strip()
             if c is not None:
