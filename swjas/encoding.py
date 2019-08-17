@@ -55,6 +55,9 @@ class _JSONEncoder(json.JSONEncoder):
         try:
             return json.JSONEncoder.default(self, obj)
         except TypeError as e:
+            from collections.abc import Iterable
+            if isinstance(obj, Iterable):
+                return list(obj)
             if strfyUnknownObjectTypes:
                 return str(obj)
             else:
