@@ -186,8 +186,8 @@ class StringField(TypeField):
             raise FieldException(f'String must be at least {self._minLength} characters long', minLength=self._minLength, foundLength=len(value))
         if self._maxLength is not None and len(value) > self._maxLength:
             raise FieldException(f'String cannot be longer than {self._maxLength} characters', maxLength=self._maxLength, foundLength=len(value))
-        if self._regex is not None and not self._regex.match(value):
-            raise FieldException(f'String does not match regex "{self._regex}"', regex=self._regex)
+        if self._regex is not None and not self._regex.fullmatch(value):
+            raise FieldException(f'String does not match regex "{self._regex.pattern}"', regex=self._regex.pattern)
         return value
 
 
